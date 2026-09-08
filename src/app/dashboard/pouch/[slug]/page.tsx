@@ -48,6 +48,7 @@ export default function PouchDetailPage() {
     lanIp: string | null;
     lanUrl: string | null;
     configuredAppUrl: string | null;
+    publicUrl?: string | null;
   } | null>(null);
   const [customUrl, setCustomUrl] = useState<string>("");
   const [showCustomUrlInput, setShowCustomUrlInput] = useState(false);
@@ -132,12 +133,18 @@ export default function PouchDetailPage() {
 
   // Determine share URLs
   const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
+  const isProductionDomain = Boolean(origin && !origin.includes("localhost") && !origin.includes("127.0.0.1"));
+  const productionBase = networkInfo?.publicUrl || (isProductionDomain ? origin : null);
+
   const localUrl = `${origin}/p/${slug}`;
   const wifiUrl = networkInfo?.lanUrl ? `${networkInfo.lanUrl}/p/${slug}` : localUrl;
   const customShareUrl = customUrl ? `${customUrl.replace(/\/$/, "")}/p/${slug}` : localUrl;
+  const prodShareUrl = productionBase ? `${productionBase}/p/${slug}` : localUrl;
 
   const currentShareUrl =
-    shareMode === "custom" && customUrl
+    productionBase
+      ? prodShareUrl
+      : shareMode === "custom" && customUrl
       ? customShareUrl
       : shareMode === "wifi" && networkInfo?.lanUrl
       ? wifiUrl

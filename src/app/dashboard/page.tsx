@@ -160,7 +160,8 @@ export default function DashboardPage() {
 
   const handleCopyLink = (pouchSlug: string) => {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
-    const base = lanUrl || origin;
+    const isProd = Boolean(origin && !origin.includes("localhost") && !origin.includes("127.0.0.1"));
+    const base = isProd ? origin : (lanUrl || origin);
     const publicUrl = `${base}/p/${pouchSlug}`;
     navigator.clipboard.writeText(publicUrl);
     setCopiedSlug(pouchSlug);
