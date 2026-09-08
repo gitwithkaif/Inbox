@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { db, isSupabaseAvailable } from "@/lib/db";
 import { UPLOAD_DIR } from "@/lib/local-store";
+import { getAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,6 +19,8 @@ export async function POST(req: NextRequest) {
 
     const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
     const relativePath = `${pouchId}/${Date.now()}_${cleanFileName}`;
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
     if (!isSupabaseAvailable()) {
       // Local storage fallback
@@ -27,8 +30,6 @@ export async function POST(req: NextRequest) {
       }
 
       const fullPath = path.join(UPLOAD_DIR, relativePath);
-      const arrayBuffer = await file.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
       fs.writeFileSync(fullPath, buffer);
 
       const record = await db.addFile({
@@ -43,7 +44,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, file: record, isLocal: true });
     }
 
-    // If Supabase is available, we can insert into db
+    // Upload to Supabase Storage bucket 'pouch-files'
+    const client = getAdminClient();
+    const { error: storageError } = await client.storage
+      .from("pouch-files")
+      .upload(relativePath, buffer, {
+        contentType: file.type || "application/octet-stream",
+        upsert: true,
+      });
+
+    if (storageError) {
+      console.error("Supabase storage error:", storageError);
+      throw new Error(`Failed to store file in Supabase: ${storageError.message}`);
+    }
+
+    // Insert file metadata into Supabase Database
     const record = await db.addFile({
       pouch_id: pouchId,
       file_name: file.name,
