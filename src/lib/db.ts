@@ -143,7 +143,10 @@ export const db = {
         return { pouch: newPouch, isLocal: false };
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.warn("Supabase createPouch failed (" + msg + "), using local store.");
+        console.error("Supabase createPouch error:", err);
+        throw new Error(
+          `Supabase Error: ${msg}. Make sure you executed the SQL in 'supabase/schema.sql' inside your Supabase project's SQL Editor, and that SUPABASE_SERVICE_ROLE_KEY is set in Vercel.`
+        );
       }
     }
 
@@ -160,9 +163,12 @@ export const db = {
           .update({ password_hash })
           .eq("id", id);
 
-        if (!error) return true;
-      } catch (err) {
-        console.warn("Supabase updatePassword failed, using local store:", err);
+        if (error) throw error;
+        return true;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("Supabase updatePassword error:", err);
+        throw new Error(`Supabase Error: ${msg}`);
       }
     }
 
@@ -182,9 +188,12 @@ export const db = {
         } catch {}
 
         const { error } = await client.from("pouches").delete().eq("id", id);
-        if (!error) return true;
-      } catch (err) {
-        console.warn("Supabase deletePouch failed, using local store:", err);
+        if (error) throw error;
+        return true;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("Supabase deletePouch error:", err);
+        throw new Error(`Supabase Error: ${msg}`);
       }
     }
 

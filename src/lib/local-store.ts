@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import os from "os";
 import { Pouch, PouchFile } from "./types";
 
 interface DbSchema {
@@ -7,7 +8,18 @@ interface DbSchema {
   files: PouchFile[];
 }
 
-const DATA_DIR = path.join(process.cwd(), ".data");
+// In serverless environments (e.g. Vercel / AWS Lambda), the root filesystem (/var/task) is read-only.
+// os.tmpdir() (/tmp) is the writable scratch space.
+const isServerless = Boolean(
+  process.env.VERCEL || 
+  process.env.AWS_LAMBDA_FUNCTION_NAME || 
+  process.env.LAMBDA_TASK_ROOT
+);
+
+const DATA_DIR = isServerless
+  ? path.join(os.tmpdir(), "inbox-data")
+  : path.join(process.cwd(), ".data");
+
 const DB_FILE = path.join(DATA_DIR, "db.json");
 export const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
 
