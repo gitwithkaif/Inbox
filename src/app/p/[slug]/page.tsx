@@ -323,7 +323,20 @@ export default function PublicPouchUploadPage() {
       setNameError(true);
       return;
     }
-    await uploadSingleFile(item, pouch.id, senderName.trim(), senderMessage.trim());
+    const success = await uploadSingleFile(item, pouch.id, senderName.trim(), senderMessage.trim());
+
+    if (success) {
+      fetch("/api/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pouch_id: pouch.id,
+          sender_name: senderName.trim(),
+          sender_message: senderMessage.trim() || undefined,
+          file_names: [item.name],
+        }),
+      }).catch((e) => console.warn("Notification trigger notice:", e));
+    }
 
     setFilesQueue((currentQueue) => {
       const remaining = currentQueue.filter((f) => f.status !== "completed");
