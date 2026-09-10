@@ -18,18 +18,45 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "fileId or path required" }, { status: 400 });
     }
 
-    if (isSupabaseAvailable() && storagePath) {
-      const client = getAdminClient();
-      const { data, error } = await client.storage
-        .from("pouch-files")
-        .createSignedUrl(storagePath, 300, { download: fileName });
+    const safeName = fileName.replace(/["\r\n]/g, "");
+    const encodedName = encodeURIComponent(safeName);
 
-      if (!error && data?.signedUrl) {
-        return NextResponse.redirect(data.signedUrl);
+    // 1. If Supabase is available, download directly from Supabase Storage (no expiring signed URL / JWT timestamp check)
+    if (isSupabaseAvailable() && storagePath) {
+      try {
+        const client = getAdminClient();
+        const { data: blob, error } = await client.storage
+          .from("pouch-files")
+          .download(storagePath);
+
+        if (!error && blob) {
+          const arrayBuffer = await blob.arrayBuffer();
+          const buffer = Buffer.from(arrayBuffer);
+
+          const headers = new Headers();
+          headers.set(
+            "Content-Disposition",
+            `attachment; filename="${safeName}"; filename*=UTF-8''${encodedName}`
+          );
+          headers.set("Content-Type", blob.type || "application/octet-stream");
+          headers.set("Content-Length", String(buffer.length));
+          headers.set("Cache-Control", "private, no-cache, no-store, must-revalidate");
+
+          return new NextResponse(buffer, {
+            status: 200,
+            headers,
+          });
+        }
+
+        if (error) {
+          console.warn("Supabase storage download error, attempting fallback:", error.message);
+        }
+      } catch (sbErr) {
+        console.warn("Supabase download exception, attempting fallback:", sbErr);
       }
     }
 
-    // Local file fallback
+    // 2. Local file fallback
     let targetPath = storagePath;
     if (!targetPath && fileId) {
       const fileRecord = localStore.getFileById(fileId);
@@ -38,24 +65,27 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    if (!targetPath) {
-      return NextResponse.json({ error: "File not found" }, { status: 404 });
+    if (targetPath) {
+      const fullPath = path.join(UPLOAD_DIR, targetPath);
+      if (fs.existsSync(fullPath)) {
+        const fileBuffer = fs.readFileSync(fullPath);
+        const headers = new Headers();
+        headers.set(
+          "Content-Disposition",
+          `attachment; filename="${safeName}"; filename*=UTF-8''${encodedName}`
+        );
+        headers.set("Content-Type", "application/octet-stream");
+        headers.set("Content-Length", String(fileBuffer.length));
+        headers.set("Cache-Control", "private, no-cache, no-store, must-revalidate");
+
+        return new NextResponse(fileBuffer, {
+          status: 200,
+          headers,
+        });
+      }
     }
 
-    const fullPath = path.join(UPLOAD_DIR, targetPath);
-    if (!fs.existsSync(fullPath)) {
-      return NextResponse.json({ error: "File not found on disk" }, { status: 404 });
-    }
-
-    const fileBuffer = fs.readFileSync(fullPath);
-    const headers = new Headers();
-    headers.set("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
-    headers.set("Content-Type", "application/octet-stream");
-
-    return new NextResponse(fileBuffer, {
-      status: 200,
-      headers,
-    });
+    return NextResponse.json({ error: "File not found in cloud or local storage" }, { status: 404 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Download failed";
     console.error("Error in /api/pouch/download:", err);

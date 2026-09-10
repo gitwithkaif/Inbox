@@ -230,12 +230,21 @@ export default function PouchDetailPage() {
         file.storage_path
       )}&name=${encodeURIComponent(file.file_name)}`;
 
+      const res = await fetch(downloadUrl);
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || `Download failed (status ${res.status})`);
+      }
+
+      const blob = await res.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.href = downloadUrl;
+      link.href = objectUrl;
       link.download = file.file_name;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      setTimeout(() => window.URL.revokeObjectURL(objectUrl), 2000);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Could not retrieve file.";
       alert(`Download failed: ${msg}`);
